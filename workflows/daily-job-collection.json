@@ -1,0 +1,151 @@
+{
+    "name": "Daily 40 Jobs Collection",
+    "nodes": [{
+            "parameters": {
+                "rule": {
+                    "interval": [{
+                        "field": "hours",
+                        "hour": 6,
+                        "minute": 0
+                    }]
+                },
+                "timezone": "America/Toronto"
+            },
+            "name": "Cron",
+            "type": "n8n-nodes-base.cron",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const AdzunaClient = require('/Users/anshuman/job_automation/job-search/adzuna-client');\nconst jobTitles = require('/Users/anshuman/job_automation/job-search/job-titles');\n\nconst client = new AdzunaClient();\nconst jobs = await client.getDailyJobs(jobTitles, 'Ontario', 40);\n\n// Add metadata\nconst enrichedJobs = jobs.map(job => ({\n  ...job,\n  scraped_at: new Date().toISOString(),\n  source: 'adzuna',\n  match_score: null, // Will be calculated in next phase\n  is_active: true\n}));\n\nreturn enrichedJobs.map(job => ({ json: job }));"
+            },
+            "name": "Get 40 Jobs",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "const items = $input.all();\nconst uniqueJobs = {};\n\n// Deduplicate by job ID\nitems.forEach(item => {\n  const job = item.json;\n  uniqueJobs[job.id] = job;\n});\n\nreturn Object.values(uniqueJobs).map(job => ({ json: job }));"
+            },
+            "name": "Deduplicate Jobs",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "upsert",
+                "table": "jobs",
+                "columns": "={{ Object.keys($json) }}",
+                "additionalFields": {
+                    "conflictingColumns": [
+                        "id"
+                    ],
+                    "updateColumns": "={{ Object.keys($json) }}"
+                }
+            },
+            "name": "Save to Supabase",
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                850,
+                300
+            ],
+            "credentials": {
+                "supabaseApi": {
+                    "id": "Supabase API credentials",
+                    "name": "Supabase API credentials"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "fromEmail": "job-automation@example.com",
+                "toEmail": "{{ $env.NOTIFICATION_EMAIL }}",
+                "subject": "Daily Jobs Report - {{ $now.format(\"YYYY-MM-DD\") }}",
+                "text": "=Daily Jobs Report\n\nDate: {{ $now.format(\"YYYY-MM-DD\") }}\nTime: {{ $now.format(\"HH:mm:ss\") }}\n\nJobs Collected: {{ $node[\"Deduplicate Jobs\"].json.length }}\n\nJob Categories:\n{% for job in $node[\"Deduplicate Jobs\"].json %}\n- {{ job.title }} at {{ job.company }}\n{% endfor %}\n\nThe jobs have been saved to the database.",
+                "options": {}
+            },
+            "name": "Send Email Summary",
+            "type": "n8n-nodes-base.gmail",
+            "typeVersion": 2,
+            "position": [
+                1050,
+                300
+            ],
+            "credentials": {
+                "gmailOAuth2Api": {
+                    "id": "Gmail account",
+                    "name": "Gmail account"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Cron": {
+            "main": [
+                [{
+                    "node": "Get 40 Jobs",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Get 40 Jobs": {
+            "main": [
+                [{
+                    "node": "Deduplicate Jobs",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Deduplicate Jobs": {
+            "main": [
+                [{
+                    "node": "Save to Supabase",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Save to Supabase": {
+            "main": [
+                [{
+                    "node": "Send Email Summary",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "saveExecutionProgress": true,
+        "saveManualExecutions": true,
+        "callerPolicy": "workflowsFromSameOwner",
+        "errorWorkflow": ""
+    },
+    "tags": [
+        "jobs",
+        "automation",
+        "daily"
+    ],
+    "pinData": {},
+    "versionId": "",
+    "id": "1",
+    "meta": {
+        "instanceId": "123abc"
+    }
+}
