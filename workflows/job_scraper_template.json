@@ -1,0 +1,163 @@
+{
+    "name": "Job Scraper Template",
+    "nodes": [{
+            "parameters": {},
+            "name": "When called by another workflow",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Get input data from the Master Controller\nconst inputData = $input.all()[0].json;\n\n// Define the job site configuration\n// This should be customized for each job site\nconst jobSiteConfig = {\n  name: \"Example Job Site\",\n  url: \"https://example.com/jobs\",\n  selectors: {\n    jobListing: \".job-listing\",\n    title: \".job-title\",\n    company: \".company-name\",\n    location: \".job-location\",\n    description: \".job-description\",\n    salary: \".job-salary\",\n    applyLink: \".apply-link\"\n  },\n  // Add any site-specific parameters\n  params: {\n    resultsPerPage: 20,\n    sortBy: \"datePosted\"\n  }\n};\n\n// Return both the input data and the job site configuration\nreturn {\n  json: {\n    ...inputData,\n    jobSite: jobSiteConfig\n  }\n};"
+            },
+            "name": "Configure Job Site",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "={{ $json.jobSite.url }}",
+                "options": {
+                    "timeout": 10000
+                }
+            },
+            "name": "HTTP Request",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Process the HTML response and extract job data\nconst response = $input.first().json;\nconst jobSite = $input.first().json.jobSite;\n\n// Simple mock extraction - in real implementation, use an HTML parser\nconst mockJobs = [\n  {\n    id: \"job1\",\n    title: \"Software Engineer\",\n    company: \"Tech Corp\",\n    location: \"Remote\",\n    description: \"Software engineering position\",\n    salary: \"$120,000 - $150,000\",\n    applyLink: \"https://example.com/apply/job1\",\n    source: jobSite.name,\n    posted: new Date().toISOString(),\n    extracted: new Date().toISOString()\n  },\n  {\n    id: \"job2\",\n    title: \"Product Manager\",\n    company: \"Startup Inc\",\n    location: \"New York, NY\",\n    description: \"Product management role\",\n    salary: \"$130,000 - $160,000\",\n    applyLink: \"https://example.com/apply/job2\",\n    source: jobSite.name,\n    posted: new Date().toISOString(),\n    extracted: new Date().toISOString()\n  }\n];\n\n// In a real implementation, extract jobs from HTML using selectors\n// const jobs = extractJobsFromHTML(response.data, jobSite.selectors);\n\nreturn {\n  json: {\n    ...response,\n    extractedJobs: mockJobs,\n    jobCount: mockJobs.length,\n    timestamp: new Date().toISOString(),\n    success: true,\n    message: `Successfully extracted ${mockJobs.length} jobs from ${jobSite.name}`\n  }\n};"
+            },
+            "name": "Extract Jobs",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [{
+                        "value1": "={{ $json.success }}",
+                        "value2": true
+                    }]
+                }
+            },
+            "name": "Success Check",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Error handling node\nconst input = $input.first().json;\n\nreturn {\n  json: {\n    ...input,\n    success: false,\n    error: true,\n    errorMessage: \"Failed to extract jobs\",\n    errorTimestamp: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Handle Error",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "table": "jobs",
+                "additionalFields": {}
+            },
+            "name": "Supabase",
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                400
+            ],
+            "credentials": {
+                "supabaseApi": {
+                    "id": "supabase-credential-id",
+                    "name": "Supabase API"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "When called by another workflow": {
+            "main": [
+                [{
+                    "node": "Configure Job Site",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Configure Job Site": {
+            "main": [
+                [{
+                    "node": "HTTP Request",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "HTTP Request": {
+            "main": [
+                [{
+                    "node": "Extract Jobs",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Extract Jobs": {
+            "main": [
+                [{
+                    "node": "Success Check",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Success Check": {
+            "main": [
+                [{
+                    "node": "Handle Error",
+                    "type": "main",
+                    "index": 0
+                }],
+                [{
+                    "node": "Supabase",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "saveExecutionProgress": true,
+        "saveManualExecutions": true,
+        "callerPolicy": "workflowsFromSameOwner"
+    },
+    "tags": ["job-automation", "scraper-template"],
+    "staticData": null,
+    "templateCredsSetupCompleted": false
+}

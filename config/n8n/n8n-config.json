@@ -1,0 +1,60 @@
+{
+    "executions": {
+        "process": {
+            "mode": "main"
+        },
+        "timeout": 300,
+        "saveDataOnError": true,
+        "saveDataOnSuccess": false,
+        "saveExecutionProgress": true
+    },
+    "generic": {
+        "instanceType": "production",
+        "timezone": "America/New_York"
+    },
+    "workflowTagsDisabled": false,
+    "telemetry": {
+        "enabled": false
+    },
+    "logs": {
+        "level": "info",
+        "output": "console",
+        "maxFiles": 20,
+        "fileLogging": {
+            "maxSize": "5M",
+            "maxFiles": 10,
+            "enabled": true,
+            "output": "${EXTERNAL_VOLUME}/logs/n8n/n8n.log"
+        }
+    },
+    "userManagement": {
+        "enabled": true,
+        "showSetupOnFirstLoad": true
+    },
+    "endpoints": {
+        "rest": {
+            "maxPayloadSize": "16MB"
+        }
+    },
+    "externalHooks": {
+        "notificationsDir": "${EXTERNAL_VOLUME}/data/n8n/notifications"
+    },
+    "performance": {
+        "maxMemoryRestart": "3G"
+    },
+    "database": {
+        "postgresdb": {
+            "connectionTimeoutMillis": 30000,
+            "idleTimeoutMillis": 30000,
+            "max": 10
+        }
+    },
+    "nodes": {
+        "include": ["n8n-nodes-base.supabase"],
+        "exclude": [],
+        "errorTriggerType": "n8n-nodes-base.errorTrigger",
+        "communityPackages": {
+            "enabled": false
+        }
+    }
+}

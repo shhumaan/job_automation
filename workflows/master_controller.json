@@ -1,0 +1,182 @@
+{
+    "name": "Master Controller",
+    "nodes": [{
+            "parameters": {
+                "rule": {
+                    "interval": [{
+                        "field": "hours",
+                        "minutesInterval": 0,
+                        "hoursInterval": [6, 14, 21]
+                    }]
+                }
+            },
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Log execution start\nconst now = new Date();\nconst executionId = $execution.id;\n\n// Get current schedule (6 AM, 2 PM, or 9 PM)\nconst hour = now.getHours();\nlet schedule = \"unknown\";\n\nif (hour === 6) {\n  schedule = \"morning\";\n} else if (hour === 14) {\n  schedule = \"afternoon\";\n} else if (hour === 21) {\n  schedule = \"evening\";\n}\n\n// Return execution metadata\nreturn {\n  json: {\n    executionId,\n    startTime: now.toISOString(),\n    schedule,\n    environment: $env.ENVIRONMENT || \"development\"\n  }\n};"
+            },
+            "name": "Prepare Execution",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": "=data.env.JOB_SCRAPER_WORKFLOW_ID"
+            },
+            "name": "Job Scraper",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": "=data.env.DATA_PROCESSOR_WORKFLOW_ID"
+            },
+            "name": "Data Processor",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": "=data.env.PERFORMANCE_MONITOR_WORKFLOW_ID"
+            },
+            "name": "Performance Monitor",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [{
+                        "value1": "={{ $json.success }}",
+                        "operation": "equal",
+                        "value2": "false"
+                    }]
+                }
+            },
+            "name": "Error Check",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "workflowId": "=data.env.ERROR_HANDLER_WORKFLOW_ID"
+            },
+            "name": "Error Handler",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1,
+            "position": [
+                1500,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Log execution completion\nconst startTime = new Date($input.first().json.startTime);\nconst endTime = new Date();\nconst durationMs = endTime - startTime;\n\n// Format duration in a readable format\nconst minutes = Math.floor(durationMs / 60000);\nconst seconds = ((durationMs % 60000) / 1000).toFixed(2);\nconst formattedDuration = `${minutes}m ${seconds}s`;\n\nreturn {\n  json: {\n    ...$input.first().json,\n    endTime: endTime.toISOString(),\n    duration: formattedDuration,\n    durationMs,\n    success: true,\n    message: \"Execution completed successfully\"\n  }\n};"
+            },
+            "name": "Execution Summary",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                1500,
+                400
+            ]
+        }
+    ],
+    "connections": {
+        "Schedule Trigger": {
+            "main": [
+                [{
+                    "node": "Prepare Execution",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Prepare Execution": {
+            "main": [
+                [{
+                    "node": "Job Scraper",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Job Scraper": {
+            "main": [
+                [{
+                    "node": "Data Processor",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Data Processor": {
+            "main": [
+                [{
+                    "node": "Performance Monitor",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Performance Monitor": {
+            "main": [
+                [{
+                    "node": "Error Check",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Error Check": {
+            "main": [
+                [{
+                    "node": "Error Handler",
+                    "type": "main",
+                    "index": 0
+                }],
+                [{
+                    "node": "Execution Summary",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        }
+    },
+    "active": true,
+    "settings": {
+        "saveExecutionProgress": true,
+        "saveManualExecutions": true,
+        "callerPolicy": "workflowsFromSameOwner",
+        "errorWorkflow": "=data.env.ERROR_HANDLER_WORKFLOW_ID"
+    },
+    "tags": ["job-automation", "master-controller"],
+    "staticData": null
+}

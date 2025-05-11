@@ -1,0 +1,188 @@
+{
+    "name": "Data Processor",
+    "nodes": [{
+            "parameters": {},
+            "name": "When called by another workflow",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Get data from input\nconst inputData = $input.all()[0].json;\nlet jobs = [];\n\n// Check if input has extracted jobs\nif (inputData.extractedJobs && Array.isArray(inputData.extractedJobs)) {\n  jobs = inputData.extractedJobs;\n}\n\n// Prepare empty result if no jobs\nif (jobs.length === 0) {\n  return {\n    json: {\n      ...inputData,\n      processedJobs: [],\n      jobCount: 0,\n      success: true,\n      message: 'No jobs to process'\n    }\n  };\n}\n\n// Process and clean the job data\nconst processedJobs = jobs.map(job => {\n  // Generate unique ID if not present\n  const jobId = job.id || `job_${Date.now()}_${Math.floor(Math.random() * 1000)}`;\n  \n  // Clean and standardize job data\n  return {\n    id: jobId,\n    title: job.title ? job.title.trim() : 'Unknown Title',\n    company: job.company ? job.company.trim() : 'Unknown Company',\n    location: job.location ? job.location.trim() : 'Unknown Location',\n    description: job.description ? job.description.trim() : '',\n    salary: job.salary || null,\n    applyLink: job.applyLink || null,\n    source: job.source || inputData.source || 'unknown',\n    posted: job.posted || new Date().toISOString(),\n    processed: new Date().toISOString(),\n    tags: job.tags || [],\n    // Add any enrichment data\n    metaData: {\n      executionId: inputData.executionId,\n      schedule: inputData.schedule || 'unknown',\n      batchId: `batch_${Date.now()}`\n    }\n  };\n});\n\nreturn {\n  json: {\n    ...inputData,\n    processedJobs,\n    jobCount: processedJobs.length,\n    processedAt: new Date().toISOString(),\n    success: true,\n    message: `Successfully processed ${processedJobs.length} jobs`\n  }\n};"
+            },
+            "name": "Process Jobs",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "select",
+                "table": "jobs",
+                "returnAll": true
+            },
+            "name": "Get Existing Jobs",
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ],
+            "credentials": {
+                "supabaseApi": {
+                    "id": "supabase-credential-id",
+                    "name": "Supabase API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Deduplicate jobs based on existing data\nconst processedJobs = $input.first().json.processedJobs;\nconst existingJobs = $input.last().json;\n\n// Create a map of existing job IDs or unique identifiers\nconst existingJobMap = {};\nexistingJobs.forEach(job => {\n  // You might want to use a combination of fields for better deduplication\n  const uniqueKey = `${job.title}-${job.company}-${job.location}`.toLowerCase().replace(/\\s+/g, '');\n  existingJobMap[uniqueKey] = true;\n});\n\n// Filter out jobs that already exist\nconst newJobs = processedJobs.filter(job => {\n  const uniqueKey = `${job.title}-${job.company}-${job.location}`.toLowerCase().replace(/\\s+/g, '');\n  return !existingJobMap[uniqueKey];\n});\n\nreturn {\n  json: {\n    ...$input.first().json,\n    processedJobs,\n    newJobs,\n    existingJobCount: existingJobs.length,\n    newJobCount: newJobs.length,\n    message: `Found ${newJobs.length} new jobs out of ${processedJobs.length} processed jobs`\n  }\n};"
+            },
+            "name": "Deduplicate Jobs",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [{
+                        "value1": "={{ $json.newJobCount }}",
+                        "operation": "larger",
+                        "value2": 0
+                    }]
+                }
+            },
+            "name": "Has New Jobs?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "table": "jobs",
+                "options": {}
+            },
+            "name": "Save to Supabase",
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                200
+            ],
+            "credentials": {
+                "supabaseApi": {
+                    "id": "supabase-credential-id",
+                    "name": "Supabase API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Skip saving as no new jobs\nconst data = $input.first().json;\n\nreturn {\n  json: {\n    ...data,\n    saved: false,\n    message: 'No new jobs to save'\n  }\n};"
+            },
+            "name": "Skip Saving",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Summarize job processing results\nconst data = $input.first().json;\n\nreturn {\n  json: {\n    ...data,\n    saved: true,\n    savedAt: new Date().toISOString(),\n    message: `Successfully saved ${data.newJobCount} new jobs to the database`,\n    success: true\n  }\n};"
+            },
+            "name": "Summarize Results",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1500,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "When called by another workflow": {
+            "main": [
+                [{
+                    "node": "Process Jobs",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Process Jobs": {
+            "main": [
+                [{
+                    "node": "Get Existing Jobs",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Get Existing Jobs": {
+            "main": [
+                [{
+                    "node": "Deduplicate Jobs",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Deduplicate Jobs": {
+            "main": [
+                [{
+                    "node": "Has New Jobs?",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Has New Jobs?": {
+            "main": [
+                [{
+                    "node": "Save to Supabase",
+                    "type": "main",
+                    "index": 0
+                }],
+                [{
+                    "node": "Skip Saving",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Save to Supabase": {
+            "main": [
+                [{
+                    "node": "Summarize Results",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        }
+    },
+    "active": true,
+    "settings": {
+        "saveExecutionProgress": true,
+        "saveManualExecutions": true,
+        "callerPolicy": "workflowsFromSameOwner"
+    },
+    "tags": ["job-automation", "data-processor"],
+    "staticData": null
+}

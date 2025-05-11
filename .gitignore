@@ -1,0 +1,22 @@
+# Environment variables
+.env
+.env.local
+
+# Node modules
+node_modules/
+
+# System files
+.DS_Store
+
+# Volumes data
+volumes/data/
+volumes/logs/*
+!volumes/logs/.gitkeep
+
+# Backup files
+volumes/backups/*
+!volumes/backups/.gitkeep
+
+# Validation reports
+validation_reports/*
+!validation_reports/.gitkeep 

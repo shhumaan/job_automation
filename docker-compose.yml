@@ -1,0 +1,158 @@
+services:
+  # n8n service
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_PORT=5678
+      - N8N_REDIS_HOST=redis
+      - WEBHOOK_URL=http://localhost:5678/
+      - N8N_LOG_LEVEL=${N8N_LOG_LEVEL:-info}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      # Supabase connection will be configured in n8n
+    volumes:
+      - ./volumes/data/n8n:/home/node/.n8n
+    networks:
+      - job_automation_network
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # Redis for caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - ./volumes/data/redis:/data
+    networks:
+      - job_automation_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+
+  # Nginx for reverse proxy
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./config/nginx:/etc/nginx/conf.d
+      - ./volumes/logs/nginx:/var/log/nginx
+    networks:
+      - job_automation_network
+    depends_on:
+      - n8n
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Ollama for AI processing
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11435:11434"
+    volumes:
+      - ./volumes/data/ollama:/root/.ollama
+    networks:
+      - job_automation_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+networks:
+  job_automation_network:
+    driver: bridge
+
+volumes:
+  n8n_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${EXTERNAL_VOLUME}/data/n8n
+      o: bind
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${EXTERNAL_VOLUME}/data/redis
+      o: bind
+  nginx_logs:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${EXTERNAL_VOLUME}/logs/nginx
+      o: bind
+  ollama_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${EXTERNAL_VOLUME}/data/ollama
+      o: bind 

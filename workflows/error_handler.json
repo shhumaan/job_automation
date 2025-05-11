@@ -1,0 +1,178 @@
+{
+    "name": "Error Handler",
+    "nodes": [{
+            "parameters": {},
+            "name": "When called by another workflow",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Process the error information\nconst errorData = $input.all()[0].json;\n\n// Format error details for logging and notification\nconst errorDetails = {\n  timestamp: new Date().toISOString(),\n  workflowName: errorData.workflowName || 'Unknown workflow',\n  executionId: errorData.executionId || 'Unknown',\n  errorMessage: errorData.errorMessage || 'No error message provided',\n  errorTrace: errorData.errorTrace || '',\n  inputData: errorData,\n  severity: errorData.severity || 'error',\n};\n\nreturn {\n  json: errorDetails\n};"
+            },
+            "name": "Process Error",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "table": "error_logs",
+                "columns": {
+                    "timestamp": "={{ $json.timestamp }}",
+                    "workflow_name": "={{ $json.workflowName }}",
+                    "execution_id": "={{ $json.executionId }}",
+                    "error_message": "={{ $json.errorMessage }}",
+                    "error_trace": "={{ $json.errorTrace }}",
+                    "severity": "={{ $json.severity }}",
+                    "input_data": "={{ JSON.stringify($json.inputData) }}"
+                }
+            },
+            "name": "Log to Supabase",
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                700,
+                300
+            ],
+            "credentials": {
+                "supabaseApi": {
+                    "id": "supabase-credential-id",
+                    "name": "Supabase API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [{
+                        "value1": "={{ $json.severity }}",
+                        "operation": "equals",
+                        "value2": "critical"
+                    }]
+                }
+            },
+            "name": "Critical Error?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "sendEmail",
+                "fromEmail": "={{ $json.fromEmail }}",
+                "toEmail": "={{ $json.toEmail }}",
+                "subject": "❌ Critical Error in Job Automation Workflow",
+                "text": "=A critical error occurred in the job automation system:\n\nWorkflow: {{ $json.workflowName }}\nExecution ID: {{ $json.executionId }}\nTimestamp: {{ $json.timestamp }}\n\nError Message: {{ $json.errorMessage }}\n\nPlease check the system immediately.",
+                "options": {}
+            },
+            "name": "Send Email Alert",
+            "type": "n8n-nodes-base.emailSend",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                200
+            ],
+            "credentials": {
+                "smtp": {
+                    "id": "email-credential-id",
+                    "name": "Email Account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Generate summary of error handling\nconst input = $input.all()[0].json;\n\nreturn {\n  json: {\n    ...input,\n    errorHandled: true,\n    errorHandledAt: new Date().toISOString(),\n    notificationSent: false,\n    message: `Error logged successfully: ${input.errorMessage}`\n  }\n};"
+            },
+            "name": "Summarize Error Handling",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1100,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Generate summary of error handling with notification\nconst input = $input.all()[0].json;\n\nreturn {\n  json: {\n    ...input,\n    errorHandled: true,\n    errorHandledAt: new Date().toISOString(),\n    notificationSent: true,\n    message: `Critical error logged and notification sent: ${input.errorMessage}`\n  }\n};"
+            },
+            "name": "Summarize Critical Error Handling",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "When called by another workflow": {
+            "main": [
+                [{
+                    "node": "Process Error",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Process Error": {
+            "main": [
+                [{
+                    "node": "Log to Supabase",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Log to Supabase": {
+            "main": [
+                [{
+                    "node": "Critical Error?",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Critical Error?": {
+            "main": [
+                [{
+                    "node": "Send Email Alert",
+                    "type": "main",
+                    "index": 0
+                }],
+                [{
+                    "node": "Summarize Error Handling",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        },
+        "Send Email Alert": {
+            "main": [
+                [{
+                    "node": "Summarize Critical Error Handling",
+                    "type": "main",
+                    "index": 0
+                }]
+            ]
+        }
+    },
+    "active": true,
+    "settings": {
+        "saveExecutionProgress": true,
+        "saveManualExecutions": true,
+        "callerPolicy": "workflowsFromSameOwner"
+    },
+    "tags": ["job-automation", "error-handler"],
+    "staticData": null
+}
